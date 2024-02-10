@@ -1,2 +1,6 @@
 # QLN
-QLN is a neural network for music generation trained using GAN &amp; PNEATM
+
+Generative Audio-Audio neural network based on [PNEATM](https://github.com/titofra/PNEATM) and using a custom GAN technique.
+
+> [!CAUTION]
+> This project is still in very early stages of development.
