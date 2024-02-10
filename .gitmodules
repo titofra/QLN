@@ -1,0 +1,6 @@
+[submodule "lib/PNEATM"]
+	path = lib/PNEATM
+	url = git@github.com:titofra/PNEATM.git
+[submodule "lib/sndfile"]
+	path = lib/sndfile
+	url = git@github.com:libsndfile/libsndfile.git
