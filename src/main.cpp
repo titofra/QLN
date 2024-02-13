@@ -7,6 +7,8 @@ int main (void) {
     const unsigned int N_CALLS_LISTEN = 44100 * 2;
     const unsigned int N_CALLS_GUESS = 18000;
     const unsigned int MAX_THREADS = 0; // default
+    const unsigned int popSize_gen = 100;
+    const unsigned int popSize_dis = 100;
     const std::string rootPath = "dataset/data/wav/";
 
     // init pneatm logger
@@ -16,19 +18,18 @@ int main (void) {
     //auto logger = spdlog::rotating_logger_mt("AGPNet_logger", "logs/log.txt", 1048576 * 100, 500);
 
     // init populations
-    unsigned int popSize_gen = 50;
-    unsigned int popSize_dis = 50;
     pneatm::Population<double> generators = SetupPopulation (popSize_gen, logger.get (), "save/stats_gen.csv");
     pneatm::Population<double> discriminators = SetupPopulation (popSize_dis, logger.get (), "save/stats_dis.csv");
-    //pneatm::Population<double> pop = LoadPopulation ("save/8499", logger.get (), "");
+    /*pneatm::Population<double> generators = LoadPopulation ("save/0_gen", logger.get (), "save/stats_gen.csv");
+    pneatm::Population<double> discriminators = LoadPopulation ("save/2_dis", logger.get (), "save/stats_dis.csv");*/
 
     // init mutation parameters
-    std::function<pneatm::mutationParams_t (double)> paramsMap_gen = SetupMutationParametersMaps ();
-    std::function<pneatm::mutationParams_t (double)> paramsMap_dis = SetupMutationParametersMaps ();
+    std::function<pneatm::mutationParams_t (double)> paramsMap_gen = SetupMutationParametersMaps (N_CALLS_LISTEN);
+    std::function<pneatm::mutationParams_t (double)> paramsMap_dis = SetupMutationParametersMaps (N_CALLS_LISTEN);
 
-    bool generator_is_winning = false;
-    std::unique_ptr<pneatm::Genome<double>> bestGenerator = generators.getGenome (0).clone ();
-    std::unique_ptr<pneatm::Genome<double>> bestDiscriminator = discriminators.getGenome (0).clone ();
+    bool generator_is_winning = true;
+    std::unique_ptr<pneatm::Genome<double>> bestGenerator = generators.getGenome (-1).clone ();
+    std::unique_ptr<pneatm::Genome<double>> bestDiscriminator = discriminators.getGenome (-1).clone ();
 
     while (generators.getGeneration () + discriminators.getGeneration () < 9500) { // while goal is not reach
         logger->info ("generation {}", generators.getGeneration () + discriminators.getGeneration ());
@@ -44,30 +45,26 @@ int main (void) {
             /* TEST the discriminators on a GENERATED AUDIO */
 
             // Run the networks over the listening part e.g. it don't predict anything, it just listen for the audio.
-            bool locked = false;
             for (const double& input : sample_listen) {
-				if (!locked) {
-                    bestGenerator->loadInput (input, 0);
-                    locked = bestGenerator->runNetwork ();
-                }
+                bestGenerator->loadInput (input, 0);
+                bestGenerator->runNetwork ();
 			}
 
             // Run the network over the predicting part e.g. it predict the audio.
             std::vector<double> generated_audio;
             for (unsigned int k = 0; k < N_CALLS_GUESS; k++) {
-				if (!locked) {
-                    generated_audio.push_back (bestGenerator->template getOutput<double> (0));
-                    bestGenerator->loadInput (generated_audio.back (), 0);
-                    locked = bestGenerator->runNetwork ();
-                }
+                generated_audio.push_back (bestGenerator->template getOutput<double> (0));
+                bestGenerator->loadInput (generated_audio.back (), 0);
 			}
+
+            const bool audio_is_generated = !bestGenerator->isLocked ();
 
             // reset genome's memory
             bestGenerator->resetMemory ();
 
             std::vector<std::vector<void*>> dis_inputs;
             std::vector<double> dis_guess_on_generated;
-            if (!locked) {
+            if (audio_is_generated) {
                 // get the resulting audio
                 std::vector<double> audio = sample_listen;
                 audio.insert (audio.end (), generated_audio.begin (), generated_audio.end ());
@@ -83,7 +80,13 @@ int main (void) {
                 // get discriminators's output
                 for (unsigned int id = 0; id < popSize_dis; id++) {
                     // get the probability of the generated audio. Note that an ideal discriminator's output is 0 as it is not a real audio.
-                    dis_guess_on_generated.push_back (discriminators.getGenome (id).template getOutput<double> (0));
+                    Genome<double>* discriminator = discriminators.getpGenome (id);
+                    if (!discriminator->isLocked ()) {
+                        dis_guess_on_generated.push_back (discriminator->template getOutput<double> (0));
+                    } else {
+                        // the best generator raised a NaN, we give it the worst output
+                        dis_guess_on_generated.push_back (1.0);
+                    }
                 }
 
                 // reset the discriminators's memory
@@ -113,7 +116,13 @@ int main (void) {
             std::vector<double> dis_guess_on_real;
             for (unsigned int id = 0; id < popSize_dis; id++) {
                 // get the probability of the real audio. Note that an ideal discriminator's output is 1 as it is a real audio.
-                dis_guess_on_real.push_back (discriminators.getGenome (id).template getOutput<double> (0));
+                Genome<double>* discriminator = discriminators.getpGenome (id);
+                if (!discriminator->isLocked ()) {
+                    dis_guess_on_real.push_back (discriminator->template getOutput<double> (0));
+                } else {
+                    // the best generator raised a NaN, we give it the worst output
+                    dis_guess_on_real.push_back (0.0);
+                }
             }
 
             // reset the discriminators's memory
@@ -126,12 +135,9 @@ int main (void) {
                     (1.0 - dis_guess_on_real [id])
                     + dis_guess_on_generated [id];
                 // grade the discriminator
-                std::cout << score << "   ";
                 if (score > 0.0) {
-                    std::cout << 1.0 / score << std::endl;
                     discriminators.getGenome (id).setFitness (1.0 / score);
                 } else {
-                    std::cout << DBL_MAX << std::endl;
                     discriminators.getGenome (id).setFitness (DBL_MAX);
                 }
             }
@@ -155,12 +161,12 @@ int main (void) {
 
 
             /* CHECK if the generator is still better than the discriminators */
-            if (dis_guess_on_real [bestDiscriminator->getID ()] > 0.5f && dis_guess_on_generated [bestDiscriminator->getID ()] < 0.5f) {
+            if (dis_guess_on_real [bestDiscriminator->getID ()] > 0.5 && dis_guess_on_generated [bestDiscriminator->getID ()] < 0.5) {
                 generator_is_winning = false;
             }
 
             /* LOG */
-            logger->info ("dis_loss_real {} \t dis_loss_gen {}", (1.0f - dis_guess_on_real [bestDiscriminator->getID ()]), dis_guess_on_generated [bestDiscriminator->getID ()]);
+            logger->info ("dis_loss_real {} \t dis_loss_gen {}", (1.0 - dis_guess_on_real [bestDiscriminator->getID ()]), dis_guess_on_generated [bestDiscriminator->getID ()]);
 
 
         } else {
@@ -180,6 +186,12 @@ int main (void) {
             std::vector<std::vector<void*>> generated_audio;
             generators.run (N_CALLS_GUESS, &generated_audio, MAX_THREADS);
 
+            // keep in memory the locked genomes
+            std::vector<bool> locked_generators (popSize_gen, false);
+            for (std::pair<const unsigned int, std::unique_ptr<Genome<double>>>& generator : generators) {
+                locked_generators [generator.first] = generator.second->isLocked ();
+            }
+
             // reset genomes's memory
             generators.resetMemory ();
 
@@ -188,40 +200,37 @@ int main (void) {
 
             for (std::pair<const unsigned int, std::unique_ptr<Genome<double>>>& generator : generators) {
 
-                // setup discriminator's inputs
-                std::vector<std::vector<void*>> dis_inputs = sample_listen_inputs;
-                dis_inputs.insert (dis_inputs.end (), generated_audio.begin (), generated_audio.end ());
+                if (!locked_generators [generator.first]) {
 
-                // run the discriminator
-                bool locked = false;
-                for (const double& input : sample_listen) {
-                    if (!locked) {
+                    // run the discriminator
+                    for (const double& input : sample_listen) {
                         bestDiscriminator->loadInput (input, 0);
-                        locked = bestDiscriminator->runNetwork ();
+                        bestDiscriminator->runNetwork ();
                     }
-                }
-                for (const void* input : generated_audio [generator.second->getID ()]) {
-                    if (!locked) {
+                    for (const void* input : generated_audio [generator.first]) {
                         bestDiscriminator->loadInput (input, 0);
-                        locked = bestDiscriminator->runNetwork ();
+                        bestDiscriminator->runNetwork ();
                     }
-                }
 
-                if (!locked) {
-                    const double score = (1.0 - bestDiscriminator->template getOutput<double> (0));
-                    // grade the generator
-                    std::cout << score << "   ";
-                    if (score > 0.0) {
-                        std::cout << 1.0 / score << std::endl;
-                        generator.second->setFitness (1.0 / score);
+                    if (!bestDiscriminator->isLocked ()) {
+                        const double score = (1.0 - bestDiscriminator->template getOutput<double> (0));
+                        // grade the generator
+                        if (score > 0.0) {
+                            generator.second->setFitness (1.0 / score);
+                        } else {
+                            generator.second->setFitness (DBL_MAX);
+                        }
                     } else {
-                        std::cout << DBL_MAX << std::endl;
+                        // discriminator diverged, we consider that the generator passed.
                         generator.second->setFitness (DBL_MAX);
                     }
-                }
 
-                // reset the discriminator's memory
-                bestDiscriminator->resetMemory ();
+                    // reset the discriminator's memory
+                    bestDiscriminator->resetMemory ();
+
+                } else {
+                    // the generator raise a NaN value, it already have the worst fitness, a null one
+                }
 
             }
 

@@ -44,27 +44,16 @@ std::function<void (activationFnParams_t*, double)> identity_mutation = [] (acti
     UNUSED (fitness);
 };
 std::function<void (activationFnParams_t*, double)> sigmoid_mutation = [] (activationFnParams_t* params, double fitness) -> void {
-    if (fitness > 400.0) {
-        if (Random_Double (0.0, 1.0, true, false) < 0.3) {
-            // reset values
-            params->alpha = Random_Double (-10.0, 10.0);
-            params->beta = Random_Double (-10.0, 10.0);
-        } else {
-            // perturb values
-            params->alpha += params->alpha * Random_Double (-0.2, 0.2);
-            params->beta += params->beta * Random_Double (-0.2, 0.2);
-        }
+    if (Random_Double (0.0, 1.0, true, false) < 0.3) {
+        // reset values
+        params->alpha = Random_Double (-10.0, 10.0);
+        params->beta = Random_Double (-10.0, 10.0);
     } else {
-        if (Random_Double (0.0, 1.0, true, false) < 0.4) {
-            // reset values
-            params->alpha = Random_Double (-10.0, 10.0);
-            params->beta = Random_Double (-10.0, 10.0);
-        } else {
-            // perturb values
-            params->alpha += params->alpha * Random_Double (-0.2, 0.2);
-            params->beta += params->beta * Random_Double (-0.2, 0.2);
-        }
+        // perturb values
+        params->alpha += params->alpha * Random_Double (-0.2, 0.2);
+        params->beta += params->beta * Random_Double (-0.2, 0.2);
     }
+    UNUSED (fitness);
 };
 
 // printing functions
@@ -123,10 +112,10 @@ pneatm::Population<double> SetupPopulation (unsigned int popSize, spdlog::logger
     activationFns [0][0][0]->setMutationFunction (identity_mutation);
     activationFns [0][0][1]->setMutationFunction (sigmoid_mutation);
 
-    unsigned int N_ConnInit = 20;
-    double probRecuInit = 15.0 / 20.0;
-    double weightExtremumInit = 20.0;
-    unsigned int maxRecuInit = 50;
+    unsigned int N_ConnInit = 4;
+    double probRecuInit = 0.0;
+    double weightExtremumInit = 2.0;
+    unsigned int maxRecuInit = 0;
     double speciationThreshInit = 20.0;
     distanceFn dstType = CONVENTIONAL;
     unsigned int threshGensSinceImproved = 15;
@@ -174,43 +163,25 @@ pneatm::Population<double> LoadPopulation (const std::string& filename, spdlog::
     return pneatm::Population<double> (filename, bias_init, resetValues, activationFns, inputsActivationFns, outputsActivationFns, logger, stats_filename);
 }
 
-std::function<pneatm::mutationParams_t (double)> SetupMutationParametersMaps () {
+std::function<pneatm::mutationParams_t (double)> SetupMutationParametersMaps (unsigned int N_CALLS_LISTEN) {
     pneatm::mutationParams_t explorationSet;
-    explorationSet.nodes.rate = 0.06;
+    explorationSet.nodes.rate = 0.1;
     explorationSet.nodes.monotypedRate = 1.0;
     explorationSet.nodes.monotyped.maxIterationsFindConnection = 100;
     //explorationSet.nodes.bityped.maxRecurrencyEntryConnection = ;
     //explorationSet.nodes.bityped.maxIterationsFindNode = ;
     explorationSet.activation_functions.rate = 0.09;
-    explorationSet.connections.rate = 0.06;
+    explorationSet.connections.rate = 0.2;
     explorationSet.connections.reactivateRate = 0.6;
-    explorationSet.connections.maxRecurrency = 44100 * 5;
+    explorationSet.connections.maxRecurrency = N_CALLS_LISTEN;
     explorationSet.connections.maxIterations = 100;
     explorationSet.connections.maxIterationsFindNode = 100;
-    explorationSet.weights.rate = 0.06;
+    explorationSet.weights.rate = 0.08;
     explorationSet.weights.fullChangeRate = 0.4;
     explorationSet.weights.perturbationFactor = 0.2;
-    pneatm::mutationParams_t refinementSet;
-    refinementSet.nodes.rate = 0.05;
-    refinementSet.nodes.monotypedRate = 1.0;
-    refinementSet.nodes.monotyped.maxIterationsFindConnection = 100;
-    //refinementSet.nodes.bityped.maxRecurrencyEntryConnection = ;
-    //refinementSet.nodes.bityped.maxIterationsFindNode = ;
-    refinementSet.activation_functions.rate = 0.08;
-    refinementSet.connections.rate = 0.05;
-    refinementSet.connections.reactivateRate = 0.6;
-    refinementSet.connections.maxRecurrency = 44100 * 5;
-    refinementSet.connections.maxIterations = 100;
-    refinementSet.connections.maxIterationsFindNode = 100;
-    refinementSet.weights.rate = 0.05;
-    refinementSet.weights.fullChangeRate = 0.3;
-    refinementSet.weights.perturbationFactor = 0.2;
     return [=] (double fitness) {
-        // Here, the mutation map is very basic: if the genome is pretty good, we just refine his network, else we explore new networks
-        if (fitness > 1.0) {
-            return refinementSet;
-        }
         return explorationSet;
+        UNUSED (fitness);
     };
 }
 
