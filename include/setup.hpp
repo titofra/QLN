@@ -30,7 +30,11 @@ std::function<double (double, activationFnParams_t*)> identity = [] (double x, a
     return x;
     UNUSED (params);
 };
-std::function<double (double, activationFnParams_t*)> output_sigmoid = [] (double x, activationFnParams_t* params) -> double {
+std::function<double (double, activationFnParams_t*)> output_sigmoid_gen = [] (double x, activationFnParams_t* params) -> double {
+    return 2.0 / (1.0 + std::exp(-1.0 * x)) - 1.0;
+    UNUSED (params);
+};
+std::function<double (double, activationFnParams_t*)> output_sigmoid_dis = [] (double x, activationFnParams_t* params) -> double {
     return 1.0 / (1.0 + std::exp(-1.0 * x));
     UNUSED (params);
 };
@@ -68,7 +72,7 @@ std::function<void (activationFnParams_t*, std::string)> sigmoid_printing = [] (
 
 /* SETUP FUNCTIONS */
 
-pneatm::Population<double> SetupPopulation (unsigned int popSize, spdlog::logger* logger, const std::string& stats_filename) {
+pneatm::Population<double> SetupPopulation_gen (unsigned int popSize, spdlog::logger* logger, const std::string& stats_filename) {
     // nodes scheme setup
     std::vector<size_t> bias_sch = {1};
     std::vector<size_t> inputs_sch = {1};
@@ -97,7 +101,7 @@ pneatm::Population<double> SetupPopulation (unsigned int popSize, spdlog::logger
     // output
     std::vector<ActivationFnBase*> outputsActivationFns;
     outputsActivationFns.push_back (new ActivationFn<double, double> ());
-    outputsActivationFns.back ()->setFunction ((void*) &output_sigmoid);
+    outputsActivationFns.back ()->setFunction ((void*) &output_sigmoid_gen);
     inputsActivationFns.back ()->setPrintingFunction (noprinting);
     // hiddens
     std::vector<std::vector<std::vector<ActivationFnBase*>>> activationFns;
@@ -122,7 +126,13 @@ pneatm::Population<double> SetupPopulation (unsigned int popSize, spdlog::logger
     return pneatm::Population<double> (popSize, bias_sch, inputs_sch, outputs_sch, hiddens_sch_init, bias_init, resetValues, activationFns, inputsActivationFns, outputsActivationFns, N_ConnInit, probRecuInit, weightExtremumInit, maxRecuInit, logger, dstType, speciationThreshInit, threshGensSinceImproved, stats_filename);
 }
 
-pneatm::Population<double> LoadPopulation (const std::string& filename, spdlog::logger* logger, const std::string& stats_filename) {
+pneatm::Population<double> SetupPopulation_dis (unsigned int popSize, spdlog::logger* logger, const std::string& stats_filename) {
+    // nodes scheme setup
+    std::vector<size_t> bias_sch = {1};
+    std::vector<size_t> inputs_sch = {1};
+    std::vector<size_t> outputs_sch = {1};
+    std::vector<std::vector<size_t>> hiddens_sch_init = {{3}};
+
     // bias values
     std::vector<void*> bias_init;
     double* unitdouble = new double (1.0);
@@ -145,7 +155,55 @@ pneatm::Population<double> LoadPopulation (const std::string& filename, spdlog::
     // output
     std::vector<ActivationFnBase*> outputsActivationFns;
     outputsActivationFns.push_back (new ActivationFn<double, double> ());
-    outputsActivationFns.back ()->setFunction ((void*) &output_sigmoid);
+    outputsActivationFns.back ()->setFunction ((void*) &output_sigmoid_dis);
+    inputsActivationFns.back ()->setPrintingFunction (noprinting);
+    // hiddens
+    std::vector<std::vector<std::vector<ActivationFnBase*>>> activationFns;
+    activationFns.push_back ({});
+    activationFns [0].push_back ({});
+    activationFns [0][0].push_back (new ActivationFn<double, double> ());
+    activationFns [0][0].push_back (new ActivationFn<double, double> ());
+    activationFns [0][0][0]->setFunction ((void*) &identity);
+    activationFns [0][0][1]->setFunction ((void*) &sigmoid);
+    activationFns [0][0][0]->setPrintingFunction (noprinting);
+    activationFns [0][0][1]->setPrintingFunction (sigmoid_printing);
+    activationFns [0][0][0]->setMutationFunction (identity_mutation);
+    activationFns [0][0][1]->setMutationFunction (sigmoid_mutation);
+
+    unsigned int N_ConnInit = 4;
+    double probRecuInit = 0.0;
+    double weightExtremumInit = 2.0;
+    unsigned int maxRecuInit = 0;
+    double speciationThreshInit = 20.0;
+    distanceFn dstType = CONVENTIONAL;
+    unsigned int threshGensSinceImproved = 15;
+    return pneatm::Population<double> (popSize, bias_sch, inputs_sch, outputs_sch, hiddens_sch_init, bias_init, resetValues, activationFns, inputsActivationFns, outputsActivationFns, N_ConnInit, probRecuInit, weightExtremumInit, maxRecuInit, logger, dstType, speciationThreshInit, threshGensSinceImproved, stats_filename);
+}
+
+pneatm::Population<double> LoadPopulation_gen (const std::string& filename, spdlog::logger* logger, const std::string& stats_filename) {
+    // bias values
+    std::vector<void*> bias_init;
+    double* unitdouble = new double (1.0);
+    bias_init.push_back ((void*) unitdouble);
+
+    // reset values
+    std::vector<void*> resetValues;
+    double* nulldouble = new double (0.0);
+    resetValues.push_back ((void*) nulldouble);
+
+    // activation functions setup
+    // bias & inputs
+    std::vector<ActivationFnBase*> inputsActivationFns;
+    inputsActivationFns.push_back (new ActivationFn<double, double> ());
+    inputsActivationFns.back ()->setFunction ((void*) &identity);
+    inputsActivationFns.back ()->setPrintingFunction (noprinting);
+    inputsActivationFns.push_back (new ActivationFn<double, double> ());
+    inputsActivationFns.back ()->setFunction ((void*) &identity);
+    inputsActivationFns.back ()->setPrintingFunction (noprinting);
+    // output
+    std::vector<ActivationFnBase*> outputsActivationFns;
+    outputsActivationFns.push_back (new ActivationFn<double, double> ());
+    outputsActivationFns.back ()->setFunction ((void*) &output_sigmoid_gen);
     inputsActivationFns.back ()->setPrintingFunction (noprinting);
     // hiddens
     std::vector<std::vector<std::vector<ActivationFnBase*>>> activationFns;
@@ -163,7 +221,48 @@ pneatm::Population<double> LoadPopulation (const std::string& filename, spdlog::
     return pneatm::Population<double> (filename, bias_init, resetValues, activationFns, inputsActivationFns, outputsActivationFns, logger, stats_filename);
 }
 
-std::function<pneatm::mutationParams_t (double)> SetupMutationParametersMaps (unsigned int N_CALLS_LISTEN) {
+pneatm::Population<double> LoadPopulation_dis (const std::string& filename, spdlog::logger* logger, const std::string& stats_filename) {
+    // bias values
+    std::vector<void*> bias_init;
+    double* unitdouble = new double (1.0);
+    bias_init.push_back ((void*) unitdouble);
+
+    // reset values
+    std::vector<void*> resetValues;
+    double* nulldouble = new double (0.0);
+    resetValues.push_back ((void*) nulldouble);
+
+    // activation functions setup
+    // bias & inputs
+    std::vector<ActivationFnBase*> inputsActivationFns;
+    inputsActivationFns.push_back (new ActivationFn<double, double> ());
+    inputsActivationFns.back ()->setFunction ((void*) &identity);
+    inputsActivationFns.back ()->setPrintingFunction (noprinting);
+    inputsActivationFns.push_back (new ActivationFn<double, double> ());
+    inputsActivationFns.back ()->setFunction ((void*) &identity);
+    inputsActivationFns.back ()->setPrintingFunction (noprinting);
+    // output
+    std::vector<ActivationFnBase*> outputsActivationFns;
+    outputsActivationFns.push_back (new ActivationFn<double, double> ());
+    outputsActivationFns.back ()->setFunction ((void*) &output_sigmoid_dis);
+    inputsActivationFns.back ()->setPrintingFunction (noprinting);
+    // hiddens
+    std::vector<std::vector<std::vector<ActivationFnBase*>>> activationFns;
+    activationFns.push_back ({});
+    activationFns [0].push_back ({});
+    activationFns [0][0].push_back (new ActivationFn<double, double> ());
+    activationFns [0][0].push_back (new ActivationFn<double, double> ());
+    activationFns [0][0][0]->setFunction ((void*) &identity);
+    activationFns [0][0][1]->setFunction ((void*) &sigmoid);
+    activationFns [0][0][0]->setPrintingFunction (noprinting);
+    activationFns [0][0][1]->setPrintingFunction (sigmoid_printing);
+    activationFns [0][0][0]->setMutationFunction (identity_mutation);
+    activationFns [0][0][1]->setMutationFunction (sigmoid_mutation);
+
+    return pneatm::Population<double> (filename, bias_init, resetValues, activationFns, inputsActivationFns, outputsActivationFns, logger, stats_filename);
+}
+
+std::function<pneatm::mutationParams_t (double)> SetupMutationParametersMaps (unsigned int AUDIO_LEN) {
     pneatm::mutationParams_t explorationSet;
     explorationSet.nodes.rate = 0.1;
     explorationSet.nodes.monotypedRate = 1.0;
@@ -173,7 +272,7 @@ std::function<pneatm::mutationParams_t (double)> SetupMutationParametersMaps (un
     explorationSet.activation_functions.rate = 0.09;
     explorationSet.connections.rate = 0.2;
     explorationSet.connections.reactivateRate = 0.6;
-    explorationSet.connections.maxRecurrency = N_CALLS_LISTEN;
+    explorationSet.connections.maxRecurrency = AUDIO_LEN;
     explorationSet.connections.maxIterations = 100;
     explorationSet.connections.maxIterationsFindNode = 100;
     explorationSet.weights.rate = 0.08;
@@ -268,26 +367,31 @@ void saveAudioSignal (const std::vector<double>& audio, const char* filename) {
     sf_close (file);
 }
 
-/*void generate (Genome<double>& genome, std::vector<double> audio, unsigned int N_CALLS_LISTEN, unsigned int N_CALLS_GUESS, const char* filename) {
-    const unsigned int audio_sz = (unsigned int) audio.size ();
-    for (unsigned int k = N_CALLS_LISTEN; k > 0; k--) {
-        float value (audio [audio_sz - k]);
-        genome.template loadInput<double> (value, 0);
+std::vector<double> white_noise (const unsigned int lenght) {
+    std::vector<double> output;
+    output.reserve (lenght);
+    for (unsigned int k = 0; k < lenght; k++) {
+        output.push_back (pneatm::Random_Double (-1.0, 1.0));
+    }
+    return output;
+}
+
+void generate (Genome<double>& genome, std::vector<double> input, const char* filename)  {
+    std::vector<double> output;
+    output.reserve (input.size ());
+    for (double value : input) {
+        genome.loadInput (value, 0);
         genome.runNetwork ();
+        output.push_back (genome.template getOutput<double> (0));
     }
 
-    for (unsigned int k = 0; k < N_CALLS_GUESS; k++) {
-		genome.saveOutputs ();
-        genome.loadInputs (genome.getOutputs ());
-        genome.runNetwork ();
+    genome.resetMemory ();
+
+    if (!genome.isLocked ()) {
+        saveAudioSignal (output, filename);
     }
 
-    for (const float& val : *static_cast<std::vector<double>*> (genome.getSavedOutputs () [0])) {
-        audio.push_back (val);
-    }
-
-    saveAudioSignal (audio, filename);
-}*/
+}
 
 
 #endif  // SETUP_HPP
