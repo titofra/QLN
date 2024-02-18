@@ -148,11 +148,7 @@ int main (void) {
 
 
             /* generate the NEW GENERATION of discriminators */
-            discriminators.crossover (true, 0.7);
-
-
-            /* MUTATE the discriminators */
-            discriminators.mutate (paramsMap_dis);
+            discriminators.buildNextGen (paramsMap_dis, true, 0.7);
 
 
             /* CHECK if the generator is still better than the discriminators */
@@ -249,11 +245,7 @@ int main (void) {
 
 
             /* generate the NEW GENERATION of generators */
-            generators.crossover (true, 0.7);
-
-
-            /* MUTATE the generators */
-            generators.mutate (paramsMap_gen);
+            generators.buildNextGen (paramsMap_gen, true, 0.7);
 
 
             /* CHECK if the discriminator is still better than the generators */
