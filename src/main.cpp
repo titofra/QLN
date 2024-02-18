@@ -20,8 +20,8 @@ int main (void) {
     // init populations
     pneatm::Population<double> generators = SetupPopulation_gen (popSize_gen, logger.get (), "save/stats_gen.csv");
     pneatm::Population<double> discriminators = SetupPopulation_dis (popSize_dis, logger.get (), "save/stats_dis.csv");
-    /*pneatm::Population<double> generators = LoadPopulation_gen ("save/120_gen", logger.get (), "save/stats_gen.csv");
-    pneatm::Population<double> discriminators = LoadPopulation_dis ("save/121_dis", logger.get (), "save/stats_dis.csv");*/
+    /*pneatm::Population<double> generators = LoadPopulation_gen ("save/168_gen", logger.get (), "save/stats_gen.csv");
+    pneatm::Population<double> discriminators = LoadPopulation_dis ("save/169_dis", logger.get (), "save/stats_dis.csv");*/
 
     // init mutation parameters
     std::function<pneatm::mutationParams_t (double)> paramsMap_gen = SetupMutationParametersMaps (AUDIO_LEN);
@@ -30,6 +30,7 @@ int main (void) {
     bool generator_is_winning = true;
     std::unique_ptr<pneatm::Genome<double>> bestGenerator = generators.getGenome (-1).clone ();
     std::unique_ptr<pneatm::Genome<double>> bestDiscriminator = discriminators.getGenome (-1).clone ();
+
 
 
     /* INFERENCE */
@@ -131,11 +132,7 @@ int main (void) {
             /* GRADE the discriminators */
             for (std::pair<const unsigned int, std::unique_ptr<Genome<double>>>& discriminator : discriminators) {
                 // grade the discriminator
-                if ((cumulated_losses_real [discriminator.first] + cumulated_losses_fake [discriminator.first]) > 0.0) {
-                    discriminator.second->setFitness ((double) TEST_N_SAMPLES / (cumulated_losses_real [discriminator.first] + cumulated_losses_fake [discriminator.first]));  // 1 / avg_loss with avg_loss the average loss on real+fake (avg_loss is in [0.0, 2.0])
-                } else {
-                    discriminator.second->setFitness (DBL_MAX);
-                }
+                discriminator.second->setFitness (1.0 / (1e-10 + (cumulated_losses_real [discriminator.first] + cumulated_losses_fake [discriminator.first]) / (double) TEST_N_SAMPLES));  // 1 / (1e-10 + avg_loss) with avg_loss the average loss on real+fake (avg_loss is in [0.0, 2.0])
             }
 
 
@@ -237,11 +234,7 @@ int main (void) {
 
             /* GRADE the generators */
             for (std::pair<const unsigned int, std::unique_ptr<Genome<double>>>& generator : generators) {
-                if (cumulated_losses [generator.first] > 0.0) {
-                    generator.second->setFitness ((double) TEST_N_SAMPLES / cumulated_losses [generator.first]);  // 1 / avg_loss with avg_loss the average loss (avg_loss is in [0.0, 1.0])
-                } else {
-                    generator.second->setFitness (DBL_MAX);
-                }
+                generator.second->setFitness (1.0 / (1e-10 + cumulated_losses [generator.first] / (double) TEST_N_SAMPLES));  // 1 / (1e-10 + avg_loss) with avg_loss the average loss (avg_loss is in [0.0, 1.0])
             }
 
 
