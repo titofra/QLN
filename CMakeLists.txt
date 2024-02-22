@@ -54,5 +54,12 @@ set(BUILD_TESTING OFF)
 set(ENABLE_CPACK OFF)
 add_subdirectory(lib/sndfile)
 
+set(BUILD_SHARED_LIBS OFF)
+set(BUILD_TESTS OFF)
+set(ENABLE_THREADS ON)
+set(WITH_COMBINED_THREADS ON)
+set(ENABLE_AVX2 ON)
+add_subdirectory(lib/fftw)
+
 # Link Libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE pneatm sndfile)
+target_link_libraries(${PROJECT_NAME} PRIVATE pneatm sndfile fftw3)
