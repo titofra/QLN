@@ -54,8 +54,8 @@ std::function<void (activationFnParams_t*, double)> sigmoid_mutation = [] (activ
         params->beta = Random_Double (-10.0, 10.0);
     } else {
         // perturb values
-        params->alpha += params->alpha * Random_Double (-0.2, 0.2);
-        params->beta += params->beta * Random_Double (-0.2, 0.2);
+        params->alpha += params->alpha * Random_Double (-1.0, 1.0);
+        params->beta += params->beta * Random_Double (-1.0, 1.0);
     }
     UNUSED (fitness);
 };
@@ -264,20 +264,20 @@ pneatm::Population<double> LoadPopulation_dis (const std::string& filename, spdl
 
 std::function<pneatm::mutationParams_t (double)> SetupMutationParametersMaps (unsigned int AUDIO_LEN) {
     pneatm::mutationParams_t explorationSet;
-    explorationSet.nodes.rate = 0.1;
+    explorationSet.nodes.rate = 0.2;
     explorationSet.nodes.monotypedRate = 1.0;
     explorationSet.nodes.monotyped.maxIterationsFindConnection = 100;
     //explorationSet.nodes.bityped.maxRecurrencyEntryConnection = ;
     //explorationSet.nodes.bityped.maxIterationsFindNode = ;
-    explorationSet.activation_functions.rate = 0.09;
+    explorationSet.activation_functions.rate = 0.1;
     explorationSet.connections.rate = 0.2;
     explorationSet.connections.reactivateRate = 0.6;
     explorationSet.connections.maxRecurrency = AUDIO_LEN;
     explorationSet.connections.maxIterations = 100;
     explorationSet.connections.maxIterationsFindNode = 100;
-    explorationSet.weights.rate = 0.08;
-    explorationSet.weights.fullChangeRate = 0.4;
-    explorationSet.weights.perturbationFactor = 0.2;
+    explorationSet.weights.rate = 0.1;
+    explorationSet.weights.fullChangeRate = 0.2;
+    explorationSet.weights.perturbationFactor = 1.0;
     return [=] (double fitness) {
         return explorationSet;
         UNUSED (fitness);
@@ -345,6 +345,20 @@ std::vector<double> getRandomSample (const std::string& root) {
     std::vector<double> sample = getAudioSignal ((filePaths [Random_UInt (0, (unsigned int) filePaths.size () - 1)]).c_str());
 
     return sample;
+}
+
+std::vector<std::vector<double>> getSamples (const std::string& root) {
+    std::vector<std::vector<double>> samples;
+    std::filesystem::path directoryPath (root);
+    if (std::filesystem::is_directory (directoryPath)) {
+        for (const auto &entry : std::filesystem::directory_iterator (directoryPath)) {
+            if (entry.is_regular_file ()) {
+                samples.push_back (getAudioSignal (entry.path ().string ().c_str()));
+            }
+        }
+    }
+
+    return samples;
 }
 
 void saveAudioSignal (const std::vector<double>& audio, const char* filename) {

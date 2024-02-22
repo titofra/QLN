@@ -5,11 +5,11 @@ int main (void) {
 
     // constants
     const unsigned int AUDIO_LEN = 44100 * 2;
-    const unsigned int TEST_N_SAMPLES = 3;
+    const unsigned int TEST_N_SAMPLES = 5;
     const unsigned int MAX_THREADS = 0; // default
     const unsigned int popSize_gen = 100;
     const unsigned int popSize_dis = 100;
-    const std::string rootPath = "dataset/data/wav/";
+    const std::string rootPath = "dataset/data/piano/wav/";
 
     // init pneatm logger
 	spdlog::set_pattern ("[%Y-%m-%d %H:%M:%S.%e] [%t] [%^%l%$] %v");
@@ -20,8 +20,8 @@ int main (void) {
     // init populations
     pneatm::Population<double> generators = SetupPopulation_gen (popSize_gen, logger.get (), "save/stats_gen.csv");
     pneatm::Population<double> discriminators = SetupPopulation_dis (popSize_dis, logger.get (), "save/stats_dis.csv");
-    /*pneatm::Population<double> generators = LoadPopulation_gen ("save/168_gen", logger.get (), "save/stats_gen.csv");
-    pneatm::Population<double> discriminators = LoadPopulation_dis ("save/169_dis", logger.get (), "save/stats_dis.csv");*/
+    /*pneatm::Population<double> generators = LoadPopulation_gen ("save/499_gen", logger.get (), "save/stats_gen.csv");
+    pneatm::Population<double> discriminators = LoadPopulation_dis ("save/498_dis", logger.get (), "save/stats_dis.csv");*/
 
     // init mutation parameters
     std::function<pneatm::mutationParams_t (double)> paramsMap_gen = SetupMutationParametersMaps (AUDIO_LEN);
@@ -40,6 +40,8 @@ int main (void) {
     return 0;*/
 
 
+
+    const std::vector<std::vector<double>> samples = getSamples (rootPath);
 
     while (generators.getGeneration () + discriminators.getGeneration () < 500) { // while goal is not reach
         logger->info ("generation {}", generators.getGeneration () + discriminators.getGeneration ());
@@ -102,8 +104,9 @@ int main (void) {
                 /* TEST the discriminators on a REAL AUDIO */
 
                 // setup discriminator's inputs
-                std::vector<double> sample = getRandomSample (rootPath);
-                std::vector<double> real_audio (sample.begin (), sample.begin () + AUDIO_LEN);
+                const std::vector<double>& sample = samples [pneatm::Random_UInt (0, (unsigned int) samples.size () - 1)];
+                const unsigned int start = pneatm::Random_UInt (0, (unsigned int) sample.size () - AUDIO_LEN - 1);
+                std::vector<double> real_audio (sample.begin () + start, sample.begin () + start + AUDIO_LEN);
                 dis_inputs.clear ();
                 for (double& input : real_audio) {
                     dis_inputs.push_back (std::vector<void*> (1, static_cast<void*> (&input)));
@@ -147,6 +150,10 @@ int main (void) {
             discriminators.save ("save/" + std::to_string (generators.getGeneration () + discriminators.getGeneration ()) + "_dis");
 
 
+            /* LOG */
+            logger->info ("dis_loss_real {} \t dis_loss_gen {}", diss_loss_real, diss_loss_gen);
+
+
             /* generate the NEW GENERATION of discriminators */
             discriminators.buildNextGen (paramsMap_dis, true, 0.7);
 
@@ -156,8 +163,6 @@ int main (void) {
                 generator_is_winning = false;
             }
 
-            /* LOG */
-            logger->info ("dis_loss_real {} \t dis_loss_gen {}", diss_loss_real, diss_loss_gen);
 
 
         } else {
@@ -186,7 +191,12 @@ int main (void) {
                 std::vector<std::vector<double>> audio;
                 audio.reserve (popSize_gen);
                 for (std::vector<void*>& output : outputs) {
-                    audio.push_back (*static_cast<std::vector<double>*> (output [0]));
+                    if (output.size () > 0) {
+                        audio.push_back (*static_cast<std::vector<double>*> (output [0]));
+                    } else {
+                        // the genome has been locked
+                        audio.push_back ({});
+                    }
                 }
 
                 // keep in memory the locked genomes
@@ -244,6 +254,10 @@ int main (void) {
             generators.save ("save/" + std::to_string (generators.getGeneration () + discriminators.getGeneration ()) + "_gen");
 
 
+            /* LOG */
+            logger->info ("gen_loss {}", gen_loss);
+
+
             /* generate the NEW GENERATION of generators */
             generators.buildNextGen (paramsMap_gen, true, 0.7);
 
@@ -254,10 +268,11 @@ int main (void) {
             }
 
 
-            /* LOG */
-            logger->info ("gen_loss {}", gen_loss);
-
         }
+
+
+        /* INFERENCE */
+        if ((generators.getGeneration () + discriminators.getGeneration ()) % 100 == 0) generate (*bestGenerator, white_noise (AUDIO_LEN), (std::to_string(generators.getGeneration () + discriminators.getGeneration ()) + ".wav").c_str ());
     }
 
     return 0;
