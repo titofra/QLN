@@ -25,7 +25,7 @@ if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/.git")
 # Update submodules as needed
     option(GIT_SUBMODULE "Check submodules during build" ON)
     if(GIT_SUBMODULE)
-        message(STATUS "Submodule update")
+        message(STATUS "Submodules update")
         execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --remote --init --recursive
                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                         RESULT_VARIABLE GIT_SUBMOD_RESULT)
@@ -60,6 +60,7 @@ set(ENABLE_THREADS ON)
 set(WITH_COMBINED_THREADS ON)
 set(ENABLE_AVX2 ON)
 add_subdirectory(lib/fftw)
+target_include_directories(${PROJECT_NAME} PUBLIC lib/fftw/api)
 
 # Link Libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE pneatm sndfile fftw3)
