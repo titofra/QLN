@@ -1,6 +1,7 @@
 /**
     TODO:   add listening part before generation?
             opti: 1-declaration var
+            opti: use of {}
 */
 
 #include "setup.hpp"
@@ -15,6 +16,7 @@ int main (void) {
     const unsigned int TEST_N_SAMPLES = 5;
     const unsigned int NN_MEMORY_SIZE = 5 * 44100 / (WINDOW_SIZE - WINDOW_OVERLAP);    // 5s
     const unsigned int TRAIN_AUDIO_SIZE = NN_MEMORY_SIZE;    // 5s
+    const unsigned int N_LOOP_GENERATE = 8;
     const unsigned int TRAIN_AUDIO_LEN = TRAIN_AUDIO_SIZE * (WINDOW_SIZE - WINDOW_OVERLAP); // do not change it
     const unsigned int FFT_OUTPUT_SIZE = WINDOW_SIZE / 2 + 1;   // do not change it
     const unsigned int POP_SIZE_GEN = 100;
@@ -25,13 +27,13 @@ int main (void) {
 	spdlog::set_pattern ("[%Y-%m-%d %H:%M:%S.%e] [%t] [%^%l%$] %v");
     spdlog::set_level(spdlog::level::info);
     auto logger = spdlog::stdout_color_mt("console");
-    //auto logger = spdlog::rotating_logger_mt("QLN_logger", "logs/log.txt", 1048576 * 100, 500);
+    //auto logger = spdlog::rotating_logger_mt("QLN_logger", "output/log.txt", 1048576 * 100, 500);
 
     // init populations
-    /*pneatm::Population<std::complex<double>> generators = SetupPopulation_gen (POP_SIZE_GEN, FFT_OUTPUT_SIZE, NN_MEMORY_SIZE, logger.get (), "save/stats_gen.csv");
-    pneatm::Population<std::complex<double>> discriminators = SetupPopulation_dis (POP_SIZE_DIS, FFT_OUTPUT_SIZE, NN_MEMORY_SIZE, logger.get (), "save/stats_dis.csv");*/
-    pneatm::Population<std::complex<double>> generators = LoadPopulation_gen ("save/410_gen", FFT_OUTPUT_SIZE, logger.get (), "save/stats_gen.csv");
-    pneatm::Population<std::complex<double>> discriminators = LoadPopulation_dis ("save/405_dis", FFT_OUTPUT_SIZE, logger.get (), "save/stats_dis.csv");
+    pneatm::Population<std::complex<double>> generators = SetupPopulation_gen (POP_SIZE_GEN, FFT_OUTPUT_SIZE, NN_MEMORY_SIZE, logger.get (), "output/stats_gen.csv");
+    pneatm::Population<std::complex<double>> discriminators = SetupPopulation_dis (POP_SIZE_DIS, FFT_OUTPUT_SIZE, NN_MEMORY_SIZE, logger.get (), "output/stats_dis.csv");
+    /*pneatm::Population<std::complex<double>> generators = LoadPopulation_gen ("output/410_gen", FFT_OUTPUT_SIZE, logger.get (), "output/stats_gen.csv");
+    pneatm::Population<std::complex<double>> discriminators = LoadPopulation_dis ("output/405_dis", FFT_OUTPUT_SIZE, logger.get (), "output/stats_dis.csv");*/
 
     // init mutation parameters
     std::function<pneatm::mutationParams_t (double)> paramsMap_gen = SetupMutationParametersMaps (NN_MEMORY_SIZE);
@@ -43,10 +45,12 @@ int main (void) {
 
 
     /* INFERENCE */
-    generate (*bestGenerator, getSpectrogram (White_Noise (TRAIN_AUDIO_LEN), WINDOW_SIZE, WINDOW_OVERLAP), "output.wav", WINDOW_SIZE, WINDOW_OVERLAP);
+    /*for (unsigned int k = 0; k < 3; k++) {
+        generate (*bestGenerator, getSpectrogram (White_Noise (TRAIN_AUDIO_LEN), WINDOW_SIZE, WINDOW_OVERLAP), ("output_" + std::to_string (k) + ".wav").c_str (), WINDOW_SIZE, WINDOW_OVERLAP);
+    }
     bestGenerator->print ();
     bestGenerator->draw ("/usr/share/fonts/opentype/SF/SF-Pro.ttf");
-    return 0;
+    return 0;*/
 
 
     while (generators.getGeneration () + discriminators.getGeneration () < 500) { // while goal is not reach
@@ -64,34 +68,41 @@ int main (void) {
                 /* TEST the discriminators on a GENERATED spectrogram */
 
                 // The best generator generates a spectrogram from a white noise
-                std::vector<std::vector<std::complex<double>>> generated_spectrogram;
+                std::vector<std::vector<void*>> generated_spectrogram;
+                std::vector<std::vector<void*>> generated_spectrogram_copy;
                 generated_spectrogram.reserve (TRAIN_AUDIO_SIZE);
                 const std::vector<std::vector<std::complex<double>>> gen_inputs = getSpectrogram (White_Noise (TRAIN_AUDIO_LEN), WINDOW_SIZE, WINDOW_OVERLAP);
                 for (const std::vector<std::complex<double>>& inputs : gen_inputs) {
                     bestGenerator->loadInputs (inputs);
                     bestGenerator->runNetwork ();
-                    generated_spectrogram.push_back (bestGenerator->template getOutputs<std::complex<double>> ());
+                    generated_spectrogram.push_back (bestGenerator->getOutputs ());
                 }
 
-                const bool spectro_is_generated = !bestGenerator->isLocked ();
-
-                // reset genome's memory
+                bool spectro_is_generated = !bestGenerator->isLocked ();
                 bestGenerator->resetMemory ();
 
-                std::vector<std::vector<void*>> dis_inputs;
-                dis_inputs.reserve (TRAIN_AUDIO_SIZE);
-                if (spectro_is_generated) {
-                    // setup discriminator's inputs
-                    for (std::vector<std::complex<double>>& inputs : generated_spectrogram) {
-                        dis_inputs.push_back ({});
-                        dis_inputs.back ().reserve (inputs.size ());
-                        for (std::complex<double>& input : inputs) {
-                            dis_inputs.back ().push_back (static_cast<void*> (&input));
-                        }
+                unsigned int Nb_loop = 1;
+                while (Nb_loop < N_LOOP_GENERATE && spectro_is_generated) {
+                    generated_spectrogram_copy = generated_spectrogram;
+                    generated_spectrogram.clear ();
+                    generated_spectrogram.reserve (TRAIN_AUDIO_SIZE);
+                    for (const std::vector<void*>& inputs : generated_spectrogram_copy) {
+                        bestGenerator->loadInputs (inputs);
+                        bestGenerator->runNetwork ();
+                        generated_spectrogram.push_back (bestGenerator->getOutputs ());
                     }
 
+                    spectro_is_generated = !bestGenerator->isLocked ();
+                    bestGenerator->resetMemory ();
+
+                    Nb_loop++;
+                }
+
+
+                if (spectro_is_generated) {
+
                     // run the discriminators
-                    discriminators.run (dis_inputs, nullptr, MAX_THREADS_PNEATM);
+                    discriminators.run (generated_spectrogram, nullptr, MAX_THREADS_PNEATM);
 
                     // get discriminators's output
                     for (std::pair<const unsigned int, std::unique_ptr<Genome<std::complex<double>>>>& discriminator : discriminators) {
@@ -119,7 +130,7 @@ int main (void) {
                 const std::vector<std::vector<std::complex<double>>>& sample = getRandomSpectrogram (rootPath, WINDOW_SIZE, WINDOW_OVERLAP);
                 const unsigned int offset = pneatm::Random_UInt (0, (unsigned int) sample.size () - TRAIN_AUDIO_SIZE - 1);
                 std::vector<std::vector<std::complex<double>>> sample_cropped (sample.begin () + offset, sample.begin () + offset + TRAIN_AUDIO_SIZE);
-                dis_inputs.clear ();
+                std::vector<std::vector<void*>> dis_inputs;
                 dis_inputs.reserve (TRAIN_AUDIO_SIZE);
                 for (std::vector<std::complex<double>>& inputs : sample_cropped) {
                     dis_inputs.push_back ({});
@@ -164,7 +175,7 @@ int main (void) {
             bestDiscriminator = discriminators.getGenome (-1).clone ();
             const double diss_loss_real = cumulated_losses_real [bestDiscriminator->getID ()] / TEST_N_SAMPLES;
             const double diss_loss_gen = cumulated_losses_fake [bestDiscriminator->getID ()] / TEST_N_SAMPLES;
-            discriminators.save ("save/" + std::to_string (generators.getGeneration () + discriminators.getGeneration ()) + "_dis");
+            discriminators.save ("output/" + std::to_string (generators.getGeneration () + discriminators.getGeneration ()) + "_dis");
 
 
             /* LOG */
@@ -192,62 +203,61 @@ int main (void) {
             
                 // input's setup
                 std::vector<std::vector<std::complex<double>>> white_noise = getSpectrogram (White_Noise (TRAIN_AUDIO_LEN), WINDOW_SIZE, WINDOW_OVERLAP);
-                std::vector<std::vector<void*>> inputs_gen;
-                inputs_gen.reserve (white_noise.size ());
+                std::vector<std::vector<void*>> inputs_com;
+                inputs_com.reserve (TRAIN_AUDIO_SIZE);
                 for (std::vector<std::complex<double>>& inputs : white_noise) {
-                    inputs_gen.push_back ({});
-                    inputs_gen.back ().reserve (inputs.size ());
+                    inputs_com.push_back ({});
+                    inputs_com.back ().reserve (FFT_OUTPUT_SIZE);
                     for (std::complex<double>& input : inputs) {
-                        inputs_gen.back ().push_back (static_cast<void*> (&input));
+                        inputs_com.back ().push_back (static_cast<void*> (&input));
                     }
                 }
 
-                // run the networks
-                std::vector<std::vector<void*>> outputs_gen;
-                generators.run (inputs_gen, &outputs_gen, MAX_THREADS_PNEATM);
+                // get the generated spectrograms
+                std::vector<std::vector<std::vector<void*>>> inputs_gen_void (POP_SIZE_GEN, inputs_com);
+                std::vector<std::vector<std::vector<std::complex<double>>>> inputs_gen;
+                std::vector<std::vector<std::vector<void*>>> outputs_gen;
+                for (unsigned int loop = 0; loop < N_LOOP_GENERATE; loop++) {
+                    // run the networks
+                    generators.run (inputs_gen_void, &outputs_gen, MAX_THREADS_PNEATM, false);
 
-                // get the generations
-                std::vector<std::vector<std::vector<std::complex<double>>>> generations;
-                generations.reserve (POP_SIZE_GEN);
-                for (std::vector<void*>& outputs : outputs_gen) {
-                    generations.push_back ({});
-                    if (outputs.size () > 0) {
-                        // the genome has not been locked
-
-                        // get the transposed matrix of the generation
-                        std::vector<std::vector<std::complex<double>>> generation_transposed;
-                        generation_transposed.reserve (outputs.size ());
-                        for (void*& output_over_time : outputs) {
-                            generation_transposed.push_back (*static_cast<std::vector<std::complex<double>>*> (output_over_time));
-                        }
-
-                        // transposed the matriw to get a normal one
-                        generations.back ().reserve (TRAIN_AUDIO_SIZE);
-                        for (unsigned int t = 0; t < TRAIN_AUDIO_SIZE; t++) {
-                            generations.back ().push_back (std::vector<std::complex<double>> ());
-                            generations.back ().back ().reserve (FFT_OUTPUT_SIZE);
-                            for (unsigned int output_id = 0; output_id < FFT_OUTPUT_SIZE; output_id++) {
-                                generations.back ().back ().push_back (generation_transposed [output_id][t]);
+                    // setup the new inputs
+                    if (loop <= 0) {
+                        white_noise.clear ();
+                        inputs_com.clear ();
+                    }
+                    inputs_gen.clear ();
+                    inputs_gen_void.clear ();
+                    inputs_gen.reserve (POP_SIZE_GEN);
+                    inputs_gen_void.reserve (POP_SIZE_GEN);
+                    for (std::vector<std::vector<void*>>& x : outputs_gen) {
+                        inputs_gen.push_back ({});
+                        inputs_gen_void.push_back ({});
+                        inputs_gen.back ().reserve (TRAIN_AUDIO_SIZE);
+                        inputs_gen_void.back ().reserve (TRAIN_AUDIO_SIZE);
+                        for (std::vector<void*>& y : x) {
+                            inputs_gen.back ().push_back ({});
+                            inputs_gen_void.back ().push_back ({});
+                            inputs_gen.back ().back ().reserve (FFT_OUTPUT_SIZE);
+                            inputs_gen_void.back ().back ().reserve (FFT_OUTPUT_SIZE);
+                            for (void*& z : y) {
+                                inputs_gen.back ().back ().push_back (*static_cast<std::complex<double>*> (z));
+                                inputs_gen_void.back ().back ().push_back (static_cast<void*> (&inputs_gen.back ().back ().back ()));
                             }
                         }
                     }
-                }
 
-                // keep in memory the locked genomes
-                std::vector<bool> locked_generators (POP_SIZE_GEN, false);
-                for (std::pair<const unsigned int, std::unique_ptr<Genome<std::complex<double>>>>& generator : generators) {
-                    locked_generators [generator.first] = generator.second->isLocked ();
+                    // reset the memory
+                    generators.resetMemory ();
+                    outputs_gen.clear ();
                 }
-
-                // reset genomes's memory
-                generators.resetMemory ();
 
                 for (std::pair<const unsigned int, std::unique_ptr<Genome<std::complex<double>>>>& generator : generators) {
 
-                    if (!locked_generators [generator.first]) {
+                    if (inputs_gen_void [generator.first].size () > 0) {    // check if the genome has been locked (the former inputs_gen are now the final generated spectrograms)
 
                         // run the discriminator
-                        for (std::vector<std::complex<double>>& inputs : generations [generator.first]) {
+                        for (std::vector<void*>& inputs : inputs_gen_void [generator.first]) {   // the former inputs_gen are now the final generated spectrograms
                             bestDiscriminator->loadInputs (inputs);
                             bestDiscriminator->runNetwork ();
                         }
@@ -285,7 +295,7 @@ int main (void) {
             /* SAVE */
             bestGenerator = generators.getGenome (-1).clone ();
             const double gen_loss = cumulated_losses [bestGenerator->getID ()] / TEST_N_SAMPLES;
-            generators.save ("save/" + std::to_string (generators.getGeneration () + discriminators.getGeneration ()) + "_gen");
+            generators.save ("output/" + std::to_string (generators.getGeneration () + discriminators.getGeneration ()) + "_gen");
 
 
             /* LOG */
